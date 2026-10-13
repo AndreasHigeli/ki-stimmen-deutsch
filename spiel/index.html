@@ -1,0 +1,407 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Snake mit Twist</title>
+<meta name="description" content="Snake, bei dem jede Frucht die Regeln ändert. Kostenlos im Browser, mit KI-Ansager und Soundeffekten. Auf dem Handy als App installierbar.">
+<meta name="theme-color" content="#0f1220">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Snake Twist">
+<style>
+  :root {
+    --bg: #0f1220; --panel: #181c30; --grid: #1e2340; --text: #e8eaf6; --muted: #8a90b8;
+    --snake: #5ee6a8; --head: #b6ffd9; --fruit: #ff5d73; --gold: #ffd166; --rock: #6b7194; --accent: #8c7bff;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; background: var(--bg); color: var(--text);
+    font-family: system-ui, "Segoe UI", sans-serif;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 16px;
+  }
+  h1 { margin: 0 0 4px; font-size: 1.6rem; letter-spacing: .02em; }
+  .sub { color: var(--muted); margin: 0 0 14px; font-size: .9rem; text-align: center; }
+  .hud { display: flex; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; justify-content: center; }
+  .chip { background: var(--panel); padding: 6px 12px; border-radius: 999px; font-size: .9rem; }
+  .chip b { color: var(--head); }
+  .wrap { position: relative; }
+  canvas { display: block; background: var(--panel); border-radius: 12px; touch-action: none;
+           width: min(92vw, 520px); height: min(92vw, 520px); }
+  #twist { margin-top: 12px; min-height: 2.6em; text-align: center; font-size: 1rem; }
+  #twist .name { color: var(--accent); font-weight: 700; }
+  .overlay {
+    position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    background: rgba(15,18,32,.82); border-radius: 12px; text-align: center; padding: 20px; gap: 8px;
+  }
+  .overlay.hidden { display: none; }
+  .overlay h2 { margin: 0; font-size: 1.5rem; }
+  .overlay p { margin: 0; color: var(--muted); }
+  button {
+    margin-top: 8px; background: var(--accent); color: #fff; border: 0; border-radius: 10px;
+    padding: 10px 22px; font-size: 1rem; cursor: pointer; font-weight: 600;
+  }
+  button:hover { filter: brightness(1.1); }
+  .keys { color: var(--muted); font-size: .8rem; margin-top: 10px; text-align: center; }
+  .chip.btn { cursor: pointer; user-select: none; }
+  canvas { touch-action: none; max-width: 100%; height: auto; }
+  /* Steuerkreuz nur auf Touch-Geräten */
+  .pad { display: none; grid-template-columns: repeat(3, 64px); grid-template-rows: repeat(3, 64px); gap: 6px; margin-top: 14px; }
+  .pad button { background: var(--panel); border: 1px solid var(--grid); color: var(--text); border-radius: 14px; font-size: 1.4rem; touch-action: manipulation; }
+  .pad button:active { background: var(--accent); }
+  .pad .u { grid-column: 2; grid-row: 1; } .pad .l { grid-column: 1; grid-row: 2; } .pad .r { grid-column: 3; grid-row: 2; } .pad .d { grid-column: 2; grid-row: 3; }
+  .pad .p { grid-column: 2; grid-row: 2; font-size: 1rem; }
+  @media (pointer: coarse) { .pad { display: grid; } .keys { display: none; } }
+  .install { display: none; margin-top: 12px; font-size: .85rem; color: var(--muted); text-align: center; max-width: 520px; }
+  .install button { margin-left: 8px; background: var(--accent); color: #0f1220; border: 0; border-radius: 999px; padding: 6px 14px; font-weight: 700; cursor: pointer; }
+  .foot { max-width: 520px; margin: 26px auto 0; font-size: .82rem; color: var(--muted); line-height: 1.5; text-align: center; }
+  .foot .ad { background: var(--panel); border: 1px solid var(--grid); border-radius: 12px; padding: 10px 14px; color: var(--text); }
+  .foot a { color: var(--gold); }
+  .foot .links { margin: 10px 0 6px; }
+  .foot .tm { font-size: .72rem; }
+</style>
+</head>
+<body>
+  <h1>🐍 Snake mit Twist</h1>
+  <p class="sub">Jede Frucht ändert die Regeln. Pass dich an oder stirb.</p>
+  <div class="hud">
+    <span class="chip">Punkte: <b id="score">0</b></span>
+    <span class="chip">Rekord: <b id="best">0</b></span>
+    <span class="chip">Länge: <b id="len">3</b></span>
+    <span class="chip btn" id="muteBtn" title="Ton an/aus (M)">🔊 Ton</span>
+  </div>
+  <div class="wrap">
+    <canvas id="c" width="520" height="520"></canvas>
+    <div class="overlay" id="overlay">
+      <h2 id="ovTitle">Bereit?</h2>
+      <p id="ovText">Pfeiltasten / WASD oder wischen. Leertaste = Pause.</p>
+      <button id="startBtn">Los geht's</button>
+    </div>
+  </div>
+  <div id="twist">Aktiver Twist: <span class="name">Keiner</span></div>
+  <div class="pad" id="pad" aria-label="Steuerkreuz">
+    <button class="u" data-dir="0,-1" aria-label="Hoch">▲</button>
+    <button class="l" data-dir="-1,0" aria-label="Links">◀</button>
+    <button class="p" id="padPause" aria-label="Pause">II</button>
+    <button class="r" data-dir="1,0" aria-label="Rechts">▶</button>
+    <button class="d" data-dir="0,1" aria-label="Runter">▼</button>
+  </div>
+  <div class="keys">Pfeile/WASD lenken · Leertaste pausiert/startet · M = Ton an/aus · auf dem Handy wischen</div>
+  <div class="install" id="install">Als App auf den Startbildschirm: <span id="installHint">im Browser-Menü „Zum Startbildschirm hinzufügen“ wählen.</span><button id="installBtn" hidden>Installieren</button></div>
+  <footer class="foot">
+    <p class="ad">Anzeige · Ansager und Soundeffekte in diesem Spiel sind KI-generiert mit ElevenLabs.
+      <a href="https://try.elevenlabs.io/c0m0j5fidbic" rel="sponsored noopener" target="_blank">ElevenLabs kostenlos testen</a>.
+      Ich bin unabhängiger Affiliate: Schließt du über diesen Link ein Abo ab, erhalte ich eine Provision. Für dich bleibt der Preis gleich, und du unterstützt damit den Kanal.</p>
+    <p class="links">
+      <a href="https://www.youtube.com/@KI-StimmenDeutsch" target="_blank" rel="noopener">YouTube: KI-Stimmen Deutsch</a> ·
+      <a href="https://andreashigeli.github.io/ki-stimmen-deutsch/anleitung/ElevenLabs-auf-Deutsch-Komplettanleitung.pdf" target="_blank" rel="noopener">So vertonst du selbst (PDF)</a> ·
+      <a href="https://andreashigeli.github.io/ki-stimmen-deutsch/impressum/">Impressum</a> ·
+      <a href="https://andreashigeli.github.io/ki-stimmen-deutsch/datenschutz/">Datenschutz</a>
+    </p>
+    <p class="tm">ElevenLabs and the ElevenLabs logo are registered trademarks or trademarks of ElevenLabs, Inc. Used with permission.</p>
+  </footer>
+
+<script>
+const N = 20;                       // Gitterzellen pro Seite
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const CELL = canvas.width / N;
+const $ = id => document.getElementById(id);
+
+const TWISTS = [
+  { id: 'none',   name: 'Durchatmen',   desc: 'Ausnahmsweise ganz normal.' },
+  { id: 'turbo',  name: 'Turbo',        desc: 'Alles läuft 60 % schneller!' },
+  { id: 'mirror', name: 'Spiegelwelt',  desc: 'Die Steuerung ist vertauscht.' },
+  { id: 'wrap',   name: 'Portale',      desc: 'Die Wände führen auf die andere Seite.' },
+  { id: 'dark',   name: 'Finsternis',   desc: 'Du siehst nur noch, was nah ist.' },
+  { id: 'gold',   name: 'Goldrausch',   desc: 'Die nächste Frucht zählt dreifach.' },
+  { id: 'rocks',  name: 'Steinschlag',  desc: 'Es fallen Felsen vom Himmel.' },
+  { id: 'slow',   name: 'Zeitlupe',     desc: 'Kurz verschnaufen, alles wird langsamer.' },
+];
+
+let best = 0;
+try { best = +localStorage.getItem('snakeTwistBest') || 0; } catch (e) {}
+$('best').textContent = best;
+
+// Ton: Ansager (KI-Stimme, ElevenLabs) und Effekte aus sounds/. Fehlt eine Datei, bleibt es still.
+const SOUNDS = {};
+['start','none','turbo','mirror','wrap','dark','gold','rocks','slow','gameover','record'].forEach(id => SOUNDS['say-' + id] = 'sounds/say-' + id + '.mp3');
+['eat','die','portal'].forEach(id => SOUNDS['sfx-' + id] = 'sounds/sfx-' + id + '.mp3');
+const audio = {};
+for (const [id, src] of Object.entries(SOUNDS)) { const a = new Audio(src); a.preload = 'auto'; audio[id] = a; }
+let muted = false;
+try { muted = localStorage.getItem('snakeTwistMuted') === '1'; } catch (e) {}
+let currentSay = null;
+function play(id, volume) {
+  if (muted) return;
+  const a = audio[id]; if (!a) return;
+  if (id.startsWith('say-')) { if (currentSay) { currentSay.pause(); currentSay.currentTime = 0; } currentSay = a; }
+  const inst = id.startsWith('sfx-') ? a.cloneNode() : a;
+  inst.volume = volume ?? (id.startsWith('sfx-') ? 0.5 : 1);
+  inst.currentTime = 0;
+  inst.play().catch(() => {});
+}
+function setMuted(m) {
+  muted = m; $('muteBtn').textContent = muted ? '🔇 Stumm' : '🔊 Ton';
+  if (muted && currentSay) currentSay.pause();
+  try { localStorage.setItem('snakeTwistMuted', muted ? '1' : '0'); } catch (e) {}
+}
+$('muteBtn').addEventListener('click', () => setMuted(!muted));
+setMuted(muted);
+
+let snake, dir, nextDir, fruit, rocks, score, twist, tickMs, timer, running, paused, dead;
+
+function reset() {
+  snake = [{x: 9, y: 10}, {x: 8, y: 10}, {x: 7, y: 10}];
+  dir = {x: 1, y: 0}; nextDir = dir; turnQueue = [];
+  rocks = []; score = 0; twist = TWISTS[0]; tickMs = 140; dead = false;
+  placeFruit(); setTwist(null); updateHud();
+}
+
+const occupied = (x, y) =>
+  snake.some(s => s.x === x && s.y === y) || rocks.some(r => r.x === x && r.y === y);
+
+function freeCell() {
+  for (let i = 0; i < 500; i++) {
+    const x = Math.floor(Math.random() * N), y = Math.floor(Math.random() * N);
+    if (!occupied(x, y) && !(fruit && fruit.x === x && fruit.y === y)) return {x, y};
+  }
+  return null;
+}
+
+function placeFruit() { fruit = null; fruit = freeCell(); }
+
+function setTwist(t) {
+  twist = t || {id: 'start', name: 'Keiner', desc: 'Friss die erste Frucht!'};
+  $('twist').innerHTML = `Aktiver Twist: <span class="name">${twist.name}</span><br><small>${twist.desc}</small>`;
+  if (t) play('say-' + t.id);
+  if (twist.id === 'rocks') {
+    for (let i = 0; i < 6; i++) {
+      const c = freeCell();
+      // Felsen nicht direkt vor den Kopf setzen
+      if (c && Math.abs(c.x - snake[0].x) + Math.abs(c.y - snake[0].y) > 3) rocks.push(c);
+    }
+  }
+}
+
+function pickTwist() {
+  const pool = TWISTS.filter(t => t.id !== twist.id);
+  return pool[Math.floor(Math.random() * pool.length)];
+}
+
+function speed() {
+  let ms = tickMs;
+  if (twist.id === 'turbo') ms /= 1.6;
+  if (twist.id === 'slow') ms *= 1.5;
+  return ms;
+}
+
+function step() {
+  // Nächste Richtung aus der Warteschlange holen; so gehen zwei schnelle Tasten nicht verloren
+  if (turnQueue.length) nextDir = turnQueue.shift();
+  dir = nextDir;
+  const head = {x: snake[0].x + dir.x, y: snake[0].y + dir.y};
+
+  if (twist.id === 'wrap') {
+    const wrapped = head.x < 0 || head.y < 0 || head.x >= N || head.y >= N;
+    head.x = (head.x + N) % N; head.y = (head.y + N) % N;
+    if (wrapped) play('sfx-portal');
+  } else if (head.x < 0 || head.y < 0 || head.x >= N || head.y >= N) {
+    return gameOver('Gegen die Wand.');
+  }
+  const ate = fruit && head.x === fruit.x && head.y === fruit.y;
+  // Schwanz bewegt sich weg, außer wir fressen
+  const body = ate ? snake : snake.slice(0, -1);
+  if (body.some(s => s.x === head.x && s.y === head.y)) return gameOver('In den eigenen Schwanz gebissen.');
+  if (rocks.some(r => r.x === head.x && r.y === head.y)) return gameOver('Vom Felsen gestoppt.');
+
+  snake.unshift(head);
+  if (ate) {
+    play('sfx-eat');
+    score += twist.id === 'gold' ? 3 : 1;
+    tickMs = Math.max(70, tickMs - 3);
+    setTwist(pickTwist());
+    placeFruit();
+    flash = 1;
+  } else {
+    snake.pop();
+  }
+  updateHud();
+}
+
+function updateHud() {
+  $('score').textContent = score;
+  $('len').textContent = snake.length;
+}
+
+let flash = 0;
+function draw() {
+  ctx.fillStyle = getVar('--panel'); ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = getVar('--grid');
+  for (let x = 0; x < N; x++) for (let y = 0; y < N; y++)
+    if ((x + y) % 2) ctx.fillRect(x * CELL, y * CELL, CELL, CELL);
+
+  if (twist.id === 'wrap') {
+    ctx.strokeStyle = getVar('--accent'); ctx.setLineDash([6, 6]); ctx.lineWidth = 3;
+    ctx.strokeRect(1.5, 1.5, canvas.width - 3, canvas.height - 3); ctx.setLineDash([]);
+  }
+
+  rocks.forEach(r => roundRect(r.x, r.y, getVar('--rock'), 0.15, 4));
+
+  if (fruit) {
+    ctx.fillStyle = twist.id === 'gold' ? getVar('--gold') : getVar('--fruit');
+    ctx.beginPath();
+    ctx.arc(fruit.x * CELL + CELL / 2, fruit.y * CELL + CELL / 2, CELL * 0.38, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  snake.forEach((s, i) => roundRect(s.x, s.y, i === 0 ? getVar('--head') : getVar('--snake'), 0.08, 6));
+
+  // Augen
+  const h = snake[0], cx = h.x * CELL + CELL / 2, cy = h.y * CELL + CELL / 2;
+  ctx.fillStyle = '#0f1220';
+  [[-1, 1], [1, 1]].forEach(([a]) => {
+    const ex = cx + dir.x * 5 + (dir.y ? a * 5 : 0), ey = cy + dir.y * 5 + (dir.x ? a * 5 : 0);
+    ctx.beginPath(); ctx.arc(ex, ey, 2.4, 0, Math.PI * 2); ctx.fill();
+  });
+
+  if (twist.id === 'dark') {
+    const g = ctx.createRadialGradient(cx, cy, CELL * 1.5, cx, cy, CELL * 5);
+    g.addColorStop(0, 'rgba(8,9,18,0)'); g.addColorStop(1, 'rgba(8,9,18,0.97)');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, canvas.width, canvas.height);
+  }
+
+  if (flash > 0) {
+    ctx.fillStyle = `rgba(140,123,255,${flash * 0.25})`;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    flash = Math.max(0, flash - 0.08);
+  }
+}
+
+function roundRect(x, y, color, pad, r) {
+  const p = CELL * pad, w = CELL - 2 * p;
+  ctx.fillStyle = color; ctx.beginPath();
+  ctx.roundRect(x * CELL + p, y * CELL + p, w, w, r); ctx.fill();
+}
+
+const cssCache = {};
+function getVar(name) {
+  return cssCache[name] || (cssCache[name] = getComputedStyle(document.documentElement).getPropertyValue(name).trim());
+}
+
+// Spielschleife: feste Ticks für die Logik, rAF fürs Zeichnen
+let last = 0, acc = 0;
+function loop(t) {
+  const dt = t - last; last = t;
+  if (running && !paused) {
+    acc += dt;
+    while (acc >= speed() && running) { acc -= speed(); step(); }
+  }
+  draw();
+  requestAnimationFrame(loop);
+}
+
+function start() {
+  reset(); running = true; paused = false; acc = 0;
+  $('overlay').classList.add('hidden');
+  play('say-start');
+}
+
+function gameOver(reason) {
+  running = false; dead = true;
+  play('sfx-die', 0.6);
+  let record = false;
+  if (score > best) {
+    best = score; $('best').textContent = best;
+    try { localStorage.setItem('snakeTwistBest', best); } catch (e) {}
+    reason += ' Neuer Rekord! 🎉'; record = true;
+  }
+  setTimeout(() => play(record ? 'say-record' : 'say-gameover'), 700);
+  showOverlay('Game Over', `${reason} Punkte: ${score}`, 'Nochmal');
+}
+
+function showOverlay(title, text, btn) {
+  $('ovTitle').textContent = title; $('ovText').textContent = text; $('startBtn').textContent = btn;
+  $('overlay').classList.remove('hidden');
+}
+
+function togglePause() {
+  if (!running) return start();
+  paused = !paused;
+  if (paused) showOverlay('Pause', 'Leertaste zum Weiterspielen.', 'Weiter');
+  else $('overlay').classList.add('hidden');
+}
+
+// Eingaben werden in einer kurzen Warteschlange gesammelt (max. 2), damit "Hoch, dann Links" innerhalb
+// eines Ticks beide ankommen. Jede neue Richtung wird gegen die zuletzt geplante geprüft: keine 180°-Wende,
+// keine Wiederholung derselben Richtung (ein Doppeldruck ändert nichts).
+let turnQueue = [];
+function turn(dx, dy) {
+  if (twist.id === 'mirror') { dx = -dx; dy = -dy; }
+  const ref = turnQueue.length ? turnQueue[turnQueue.length - 1] : nextDir;
+  if (dx === -ref.x && dy === -ref.y) return;   // Umkehr in sich selbst
+  if (dx === ref.x && dy === ref.y) return;     // gleiche Richtung, nichts zu tun
+  if (turnQueue.length >= 2) turnQueue.shift();
+  turnQueue.push({x: dx, y: dy});
+}
+
+const KEYS = {
+  ArrowUp: [0, -1], ArrowDown: [0, 1], ArrowLeft: [-1, 0], ArrowRight: [1, 0],
+  w: [0, -1], s: [0, 1], a: [-1, 0], d: [1, 0],
+};
+document.addEventListener('keydown', e => {
+  if (e.key === ' ') { e.preventDefault(); if (!e.repeat) togglePause(); return; }
+  if (e.key === 'm' || e.key === 'M') { if (!e.repeat) setMuted(!muted); return; }
+  const k = KEYS[e.key] || KEYS[e.key.toLowerCase()];
+  if (k) { e.preventDefault(); if (e.repeat) return; if (running && !paused) turn(...k); }
+});
+// Tab oder Fenster verlassen: pausieren, sonst läuft die Schlange unbeobachtet in die Wand
+document.addEventListener('visibilitychange', () => { if (document.hidden && running && !paused) togglePause(); });
+
+$('startBtn').addEventListener('click', () => (running && paused) ? togglePause() : start());
+
+// Wischgesten
+let touch = null;
+canvas.addEventListener('touchstart', e => { touch = e.touches[0]; }, {passive: true});
+canvas.addEventListener('touchend', e => {
+  if (!touch || !running) return;
+  const t = e.changedTouches[0], dx = t.clientX - touch.clientX, dy = t.clientY - touch.clientY;
+  if (Math.max(Math.abs(dx), Math.abs(dy)) < 20) return;
+  Math.abs(dx) > Math.abs(dy) ? turn(Math.sign(dx), 0) : turn(0, Math.sign(dy));
+  touch = null;
+});
+
+// Steuerkreuz (Touch)
+document.querySelectorAll('#pad [data-dir]').forEach(b => {
+  const [dx, dy] = b.dataset.dir.split(',').map(Number);
+  const go = e => { e.preventDefault(); if (!running) start(); else if (!paused) turn(dx, dy); };
+  b.addEventListener('pointerdown', go);
+});
+$('padPause').addEventListener('pointerdown', e => { e.preventDefault(); togglePause(); });
+
+// App-Installation: Service Worker für Offline-Betrieb, Install-Hinweis nur auf Touch-Geräten außerhalb der App
+if ('serviceWorker' in navigator && location.protocol !== 'file:') {
+  navigator.serviceWorker.register('sw.js').catch(() => {});
+}
+const standalone = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+if (!standalone && window.matchMedia('(pointer: coarse)').matches) {
+  $('install').style.display = 'block';
+  if (/iphone|ipad|ipod/i.test(navigator.userAgent)) $('installHint').textContent = 'in Safari auf „Teilen“ tippen, dann „Zum Home-Bildschirm“.';
+}
+let installPrompt = null;
+window.addEventListener('beforeinstallprompt', e => {
+  e.preventDefault(); installPrompt = e;
+  $('install').style.display = 'block'; $('installHint').textContent = ''; $('installBtn').hidden = false;
+});
+$('installBtn').addEventListener('click', async () => { if (!installPrompt) return; installPrompt.prompt(); await installPrompt.userChoice; installPrompt = null; $('installBtn').hidden = true; });
+window.addEventListener('appinstalled', () => { $('install').style.display = 'none'; });
+
+reset();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
